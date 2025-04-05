@@ -33,3 +33,16 @@ markdown>=3.5.1
 aiofiles>=23.2.1
 apscheduler>=3.10.1
 websockets>=11.0.3
+# 添加缺失的依赖项
+pymysql>=1.1.0
+redis>=4.5.5
+pyjwt>=2.6.0
+flask>=2.3.3
+markdown2>=2.4.8
+PyPDF2>=3.0.1
+alibabacloud-dysmsapi20170525>=2.0.23
+alibabacloud-tea-openapi>=0.3.7
+alibabacloud-tea-util>=0.3.8
+starlette>=0.27.0
+transformers>=4.35.0
+torch>=2.1.0
