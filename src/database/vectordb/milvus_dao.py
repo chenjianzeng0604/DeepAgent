@@ -333,35 +333,28 @@ class MilvusDao:
         Returns:
             List[Dict[str, Any]]: 搜索结果列表
         """
+        if not collection_name:
+            logger.warning(f"集合名称为空")
+            return []
         if not self.milvus_client:
             logger.warning("Milvus客户端未初始化，尝试重新连接")
             if not self._init_client():
                 logger.error("无法连接到Milvus服务，无法执行搜索")
                 return []
-        
-        # 检查集合是否存在
         if not self.collection_exists(collection_name):
             logger.warning(f"集合 {collection_name} 不存在")
             return []
-        
         search_params = {
             "collection_name": collection_name,
             "data": data,
             "limit": limit
         }
-        
-        # 添加可选参数
         if filter:
             search_params["filter"] = filter
-            
         if output_fields:
             search_params["output_fields"] = output_fields
-        
-        # 添加排序参数
         if order_by:
             search_params["order_by"] = order_by
-        
-        # 添加重试机制
         for attempt in range(self.reconnect_attempts):
             try:
                 results = self.milvus_client.search(**search_params)
@@ -371,7 +364,6 @@ class MilvusDao:
                 if attempt < self.reconnect_attempts - 1:
                     logger.warning(f"搜索Milvus失败 (尝试 {attempt+1}/{self.reconnect_attempts}): {str(e)}，{self.reconnect_delay}秒后重试")
                     time.sleep(self.reconnect_delay)
-                    # 尝试重新连接
                     self._init_client()
                 else:
                     logger.error(f"搜索Milvus失败，已达最大重试次数: {str(e)}")

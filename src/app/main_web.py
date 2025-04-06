@@ -36,9 +36,7 @@ from src.app.client_user_manager import client_auth_router, initialize_client_us
 from src.database.mysql.schemas.chat_schema import CHAT_SCHEMA, init_chat_default_data
 from src.database.mysql.mysql_base import MySQLBase
 from src.utils.log_utils import setup_logging
-from src.tools.crawler.crawler_config import crawler_config_manager
 from src.session.session_manager import SessionManager
-from src.utils.json_parser import str2Json
 
 # 加载环境变量
 load_dotenv()
@@ -60,8 +58,6 @@ app.add_middleware(SessionMiddleware, secret_key=SECRET_KEY)
 # 创建模板引擎
 templates = Jinja2Templates(directory="templates")
 
-# 创建数据库管理器实例
-db_manager = crawler_config_manager
 # 创建MySQL连接
 mysql_base = MySQLBase()
 mysql_connection = mysql_base.connection

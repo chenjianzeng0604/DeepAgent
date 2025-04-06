@@ -6,12 +6,7 @@ import os
 import json
 import logging
 import asyncio
-import requests
-import re
-import time
-import random
-from typing import Dict, List, Any, Optional, AsyncGenerator
-from datetime import datetime
+from typing import AsyncGenerator
 from pathlib import Path
 import sys
 
@@ -20,12 +15,11 @@ ROOT_DIR = Path(__file__).parent.parent.parent
 sys.path.append(str(ROOT_DIR))
 
 from src.model.llm_client import llm_client
-from src.tools.crawler.web_crawlers import CrawlerManager
 from src.session.session_manager import session_manager
 from src.memory.memory_manager import memory_manager
 from src.database.vectordb.milvus_dao import milvus_dao
-from src.tools.crawler.crawler_config import crawler_config
-from src.config.app_config import app_config
+from src.tools.crawler.crawler_config import crawler_config_manager
+from src.tools.crawler.web_crawlers import web_crawler
 from src.app.chat_bean import ChatMessage
 from src.utils.json_parser import str2Json
 from src.prompts.prompt_templates import PromptTemplates
@@ -46,13 +40,13 @@ class DeepresearchAgent:
             session_id: 会话ID
         """
         session_id = session_id or str(uuid.uuid4())
-        self.crawler_config = crawler_config
+        self.crawler_config_manager = crawler_config_manager
         self.session_id = session_id
         self.summary_limit = int(os.getenv("SUMMARY_LIMIT"))
         self.vectordb_limit = int(os.getenv("VECTORDB_LIMIT"))
         self.milvus_dao = milvus_dao
         self.llm_client = llm_client
-        self.crawler_manager = CrawlerManager()
+        self.web_crawler = web_crawler
         self.research_max_iterations = int(os.getenv("RESEARCH_MAX_ITERATIONS"))
         
         # 初始化数据库管理器
@@ -129,7 +123,7 @@ class DeepresearchAgent:
                 query, 
                 '\n'.join(all_content)
             )
-            max_retries = 3
+            max_retries = 2
             retry_count = 0
             while retry_count < max_retries:
                 try:
@@ -217,21 +211,11 @@ class DeepresearchAgent:
 
                 if evaluate_result["fetch_url"] and handle_fetch_url:
                     handle_fetch_url = False
-                    async for result in self.crawler_manager.web_crawler.fetch_article_stream(evaluate_result["fetch_url"], evaluate_query if evaluate_query else origin_query):
+                    async for result in self.web_crawler.fetch_article_stream(evaluate_result["fetch_url"], evaluate_query if evaluate_query else origin_query):
                         if 'content' in result and result['content'] and len(result['content'].strip()) > 0:
                             try:
-                                result_tokens = self.llm_client.count_tokens(
-                                    f"URL: {result['url']}\n标题: {result['title']}\n内容: {result['content']}"
-                                )
-                                if current_token_count + result_tokens > available_token_limit * 0.9:
-                                    logger.info(f"添加新结果将超过token限制，当前:{current_token_count}，新结果:{result_tokens}，限制:{available_token_limit}")
-                                    await self._compress_results(origin_query, all_results, result, available_token_limit)
-                                    current_token_count = sum(self.llm_client.count_tokens(
-                                        f"URL: {r.get('url', '')}\n标题: {r.get('title', '')}\n内容: {r.get('content', '')}"
-                                    ) for r in all_results)
-                                    logger.info(f"压缩后的token数: {current_token_count}")
-                                
-                                if current_token_count + result_tokens <= available_token_limit:
+                                is_add, current_token_count, result_tokens = await self.is_add_result(origin_query, all_results, result, current_token_count, available_token_limit)
+                                if is_add:
                                     filter_url.add(result['url'])
                                     all_results.append(result)
                                     current_token_count += result_tokens
@@ -241,7 +225,7 @@ class DeepresearchAgent:
                                         "phase": "web_search"
                                     }
                             except Exception as e:
-                                logger.error(f"处理搜索结果时出错: {str(e)}", exc_info=True)
+                                logger.error(f"处理指定URL搜索结果时出错: {str(e)}", exc_info=True)
                     continue
                 
                 if evaluate_result and evaluate_result["enough"]:
@@ -258,7 +242,7 @@ class DeepresearchAgent:
                     if url_list_str:
                         filter_expr = f"url not in [{url_list_str}]"
                     vector_contents = self.milvus_dao.search(
-                        collection_name=self.crawler_config.get_collection_name(evaluate_result["scenario"]),
+                        collection_name=self.crawler_config_manager.get_collection_name(evaluate_result["scenario"]),
                         data=self.milvus_dao.generate_embeddings([evaluate_query]),
                         filter=filter_expr,
                         limit=self.vectordb_limit,
@@ -274,33 +258,35 @@ class DeepresearchAgent:
                                 unique_contents[entity['url']] = entity
                         news_items = list(unique_contents.values())
                         if news_items:
-                            all_results.extend(news_items)
-                            filter_url.update([r["url"] for r in news_items])
+                            for result in news_items:
+                                try:
+                                    is_add, current_token_count, result_tokens = await self.is_add_result(origin_query, all_results, result, current_token_count, available_token_limit)
+                                    if is_add:
+                                        filter_url.add(result['url'])
+                                        all_results.append(result)
+                                        current_token_count += result_tokens
+                                        yield {
+                                            "type": "research_process", 
+                                            "result": result,
+                                            "phase": "vector_search"
+                                        }
+                                except Exception as e:
+                                    logger.error(f"处理知识库搜索结果时出错: {str(e)}")
 
                 search_fetch_url_list = []
                 search_url_list = evaluate_result["search_url"]
                 if search_url_list:
                     for search_url in search_url_list:
-                        urls = await self.crawler_manager.web_crawler.parse_sub_url(search_url)
+                        urls = await self.web_crawler.parse_sub_url(search_url)
                         if urls:
                             search_fetch_url_list.extend(urls)
                 search_fetch_url_list = [url for url in search_fetch_url_list if url not in filter_url]
                 if search_fetch_url_list:
-                    async for result in self.crawler_manager.web_crawler.fetch_article_stream(search_fetch_url_list, evaluate_query if evaluate_query else origin_query):
+                    async for result in self.web_crawler.fetch_article_stream(search_fetch_url_list, evaluate_query if evaluate_query else origin_query):
                         if 'content' in result and result['content'] and len(result['content'].strip()) > 0:
                             try:
-                                result_tokens = self.llm_client.count_tokens(
-                                    f"URL: {result['url']}\n标题: {result['title']}\n内容: {result['content']}"
-                                )
-                                if current_token_count + result_tokens > available_token_limit * 0.9:
-                                    logger.info(f"添加新结果将超过token限制，当前:{current_token_count}，新结果:{result_tokens}，限制:{available_token_limit}")
-                                    await self._compress_results(origin_query, all_results, result, available_token_limit)
-                                    current_token_count = sum(self.llm_client.count_tokens(
-                                        f"URL: {r.get('url', '')}\n标题: {r.get('title', '')}\n内容: {r.get('content', '')}"
-                                    ) for r in all_results)
-                                    logger.info(f"压缩后的token数: {current_token_count}")
-                                
-                                if current_token_count + result_tokens <= available_token_limit:
+                                is_add, current_token_count, result_tokens = await self.is_add_result(origin_query, all_results, result, current_token_count, available_token_limit)
+                                if is_add:
                                     filter_url.add(result['url'])
                                     all_results.append(result)
                                     current_token_count += result_tokens
@@ -310,7 +296,7 @@ class DeepresearchAgent:
                                         "phase": "web_search"
                                     }
                             except Exception as e:
-                                logger.error(f"处理搜索结果时出错: {str(e)}", exc_info=True)
+                                logger.error(f"处理网络搜索结果时出错: {str(e)}")
             except Exception as e:
                 logger.error(f"deepresearch迭代时出错: {str(e)}")
             
@@ -322,6 +308,19 @@ class DeepresearchAgent:
             all_results = all_results[:self.summary_limit]
         
         yield {"type": "research_results", "result": all_results}
+
+    async def is_add_result(self, origin_query, all_results, result, current_token_count, available_token_limit):
+        result_tokens = self.llm_client.count_tokens(
+            f"URL: {result['url']}\n标题: {result['title']}\n内容: {result['content']}"
+        )
+        if current_token_count + result_tokens > available_token_limit * 0.9:
+            logger.info(f"添加新结果将超过token限制，当前:{current_token_count}，新结果:{result_tokens}，限制:{available_token_limit}")
+            await self._compress_results(origin_query, all_results, result, available_token_limit)
+            current_token_count = sum(self.llm_client.count_tokens(
+                f"URL: {r.get('url', '')}\n标题: {r.get('title', '')}\n内容: {r.get('content', '')}"
+            ) for r in all_results)
+            logger.info(f"压缩后的token数: {current_token_count}")
+        return current_token_count + result_tokens <= available_token_limit, current_token_count, result_tokens
 
     async def _compress_results(self, query, all_results, new_result, token_limit):
         """

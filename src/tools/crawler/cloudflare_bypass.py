@@ -14,36 +14,31 @@ class CloudflareBypass:
     def __init__(self, page: Page):
         self.page = page
         self.captcha_api_key = os.getenv("2CAPTCHA_API_KEY")
-        self.max_retries = 2
         self.cloudflare_bypass_wait_for_timeout = int(os.getenv("CLOUDFLARE_BYPASS_WAIT_FOR_TIMEOUT", 1000))
-        self.crawler_fetch_url_timeout = int(os.getenv("CRAWLER_FETCH_URL_TIMEOUT", 10))
+        self.crawler_fetch_url_timeout = int(os.getenv("CRAWLER_FETCH_URL_TIMEOUT", 20))
 
     async def handle_cloudflare(self) -> Optional[str]:
         """
         处理Cloudflare验证流程
         返回: 最终HTML内容
         """
-        for attempt in range(self.max_retries):
-            try:
-                if not await self._detect_challenge():
-                    return await self.page.inner_html("body")
+        try:
+            if not await self._detect_challenge():
+                return await self.page.inner_html("body")
+            challenge_type = await self._get_challenge_type()
+            if challenge_type == "turnstile":
+                success = await self._solve_turnstile()
+            elif challenge_type == "image":
+                success = await self._solve_image_captcha()
+            else:
+                success = await self._solve_auto_verify()
+            if success:
+                return await self.page.inner_html("body")
+            await self._rotate_proxy()
+        except Exception as e:
+            logger.warning(f"处理Cloudflare验证流程时出错: {str(e)}")
 
-                challenge_type = await self._get_challenge_type()
-                if challenge_type == "turnstile":
-                    success = await self._solve_turnstile()
-                elif challenge_type == "image":
-                    success = await self._solve_image_captcha()
-                else:
-                    success = await self._solve_auto_verify()
-
-                if success:
-                    return await self.page.inner_html("body")
-
-                await self._rotate_proxy()
-            except Exception as e:
-                logger.warning(f"处理Cloudflare验证流程时出错 (尝试 {attempt+1}/{self.max_retries}): {str(e)}")
-
-        try: 
+        try:
             return await self.page.inner_html("body")
         except Exception as final_error:
             logger.warning(f"最终获取页面内容失败: {str(final_error)}")
@@ -76,17 +71,14 @@ class CloudflareBypass:
         frame = await self._get_challenge_frame()
         if not frame:
             return False
-
         sitekey = await frame.evaluate("""
             document.querySelector('[data-sitekey]')?.dataset.sitekey
         """)
         if not sitekey:
             return False
-
         token = await self._get_turnstile_token(sitekey)
         if not token:
             return False
-
         await frame.evaluate(f"""
             document.querySelector('input[name=cf-turnstile-response]').value = '{token}';
             document.querySelector('form').submit();
@@ -98,13 +90,11 @@ class CloudflareBypass:
         img_element = await self.page.query_selector(".challenge-image")
         if not img_element:
             return False
-
         # 截图并解决验证码
         img_data = await img_element.screenshot()
         solution = await self._solve_image(img_data)
         if not solution:
             return False
-
         # 输入答案并提交
         await self.page.fill("input[name=cf_captcha_answer]", solution)
         await self.page.click("button[type=submit]")
@@ -120,7 +110,7 @@ class CloudflareBypass:
         try:
             frame_element = await self.page.wait_for_selector(
                 "iframe[src*='challenges.cloudflare.com']",
-                timeout=15000
+                timeout=10000
             )
             return await frame_element.content_frame()
         except:
@@ -199,7 +189,6 @@ class CloudflareBypass:
                         if result.get("status") == 1:
                             return result["request"]
                 return None
-
             except (aiohttp.ClientError, asyncio.TimeoutError):
                 return None
 
@@ -209,18 +198,14 @@ class CloudflareBypass:
         await self._random_scroll()
         if random.random() < 0.3:
             await self._random_click()
-        
-        for attempt in range(self.max_retries):
-            try:
-                if not await self.page.is_visible("body"):
-                    logger.warning("页面可能已导航，等待页面加载")
-                    await self.page.wait_for_load_state("domcontentloaded", timeout=self.crawler_fetch_url_timeout * 1000)
-                
-                await self.page.evaluate("generateMouseMove()")
-                await self.page.wait_for_timeout(self.cloudflare_bypass_wait_for_timeout)
-                break
-            except Exception as e:
-                logger.warning(f"模拟人类交互时出错 (尝试 {attempt+1}/{self.max_retries}): {str(e)}")
+        try:
+            if not await self.page.is_visible("body"):
+                logger.warning("页面可能已导航，等待页面加载")
+                await self.page.wait_for_load_state("domcontentloaded", timeout=self.crawler_fetch_url_timeout * 1000)
+            await self.page.evaluate("generateMouseMove()")
+            await self.page.wait_for_timeout(self.cloudflare_bypass_wait_for_timeout)
+        except Exception as e:
+            logger.warning(f"模拟人类交互时出错: {str(e)}")
 
     async def _random_mouse_movement(self):
         """生成随机鼠标轨迹"""

@@ -52,29 +52,16 @@ class LLMClient:
             chinese_count = sum(1 for char in text if '\u4e00' <= char <= '\u9fff')
             return chinese_count * 2 + (len(text) - chinese_count)
             
-    def truncate_prompt(self, prompt: str, system_message: str = None, max_tokens: int = None) -> str:
+    def truncate_prompt(self, prompt: str, system_message: str = None) -> str:
         """截断prompt以确保不超过模型token限制"""
-        # 预留给回复的token数和系统消息的token数
-        reserved_tokens = 1024  # 为回复预留1024个token
         system_tokens = self.count_tokens(system_message) if system_message else 0
-        
-        # 计算可用于prompt的最大token数
-        available_tokens = self.token_limit - reserved_tokens - system_tokens
-        if max_tokens and max_tokens < self.token_limit:
-            available_tokens -= max_tokens  # 如果指定了max_tokens，需要额外预留
-        
-        # 计算当前prompt的token数
+        available_tokens = self.token_limit - system_tokens
         prompt_tokens = self.count_tokens(prompt)
-        
-        # 如果prompt太长，需要截断
         if prompt_tokens > available_tokens:
             truncation_ratio = available_tokens / prompt_tokens
             logger.warning(f"输入过长 ({prompt_tokens} tokens)，截断至 {available_tokens} tokens (比例: {truncation_ratio:.2f})")
-            
-            # 简单截断方法：按比例截取文本
-            truncated_length = int(len(prompt) * truncation_ratio * 0.9)  # 稍微保守一点，取90%
+            truncated_length = int(len(prompt) * truncation_ratio * 0.9)
             prompt = prompt[:truncated_length] + "\n\n[注：由于内容过长，部分输入已被截断]"
-            
         return prompt
     
     def _init_client(self):
@@ -126,12 +113,13 @@ class LLMClient:
         Returns:
             str: 生成的文本
         """
+        prompt = self.truncate_prompt(prompt, system_message)
         messages = []
         if system_message:
             messages.append({"role": "system", "content": system_message})
         messages.append({"role": "user", "content": prompt})
         max_retries = 2
-        retry_delay = 2  # 初始等待时间（秒）
+        retry_delay = 2
         if not model:
             model = self.model
         if not use_tool_model:
@@ -203,6 +191,7 @@ class LLMClient:
         Returns:
             AsyncGenerator[str, None]: 生成的文本流
         """
+        prompt = self.truncate_prompt(prompt, system_message)
         messages = []
         if system_message:
             messages.append({"role": "system", "content": system_message})

@@ -1764,9 +1764,7 @@
                                 } else if (phase === 'web_search') {
                                     content = '<p class="web_search"><a href="' + result.url + '" target="_blank">' + result.title + '</a></p>';
                                 } else if (phase === 'vector_search') {
-                                    for (let item of result) {
-                                        content += '<p class="vector_search"><a href="' + item.url + '" target="_blank">' + item.title + '</a></p>';
-                                    }
+                                    content += '<p class="vector_search"><a href="' + result.url + '" target="_blank">' + result.title + '</a></p>';
                                 } else {
                                     content = '<div class="result">' + marked.parse(result) + '</div>';
                                 }
