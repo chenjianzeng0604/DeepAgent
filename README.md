@@ -94,10 +94,13 @@ APP_VERSION=0.1.0
 LOG_LEVEL=INFO
 
 # LLM模型配置
-LLM_MODEL=deepseek-r1                # 使用的模型名称
-LLM_TEMPERATURE=0.7                  # 模型温度参数
-LLM_MAX_TOKENS=4096                  # 最大生成token数
+LLM_MODEL=deepseek-r1                    # 深度总结模型
+LLM_TEMPERATURE=0.7                      # 模型温度参数
+LLM_MAX_TOKENS=4096                      # 最大生成token数
 LLM_USE_TOOL_MODEL=qwen2.5-72b-instruct  # 工具调用模型
+ARTICLE_QUALITY_MODEL=qwen-turbo-latest  # 文章质量评估模型
+EVALUATE_INFORMATION_MODEL=deepseek-r1   # 信息量评估与规划模型
+COMPRESSION_MODEL=deepseek-r1            # 文章压缩模型
 
 # 爬虫配置
 CRAWLER_MAX_LINKS_RESULT=20                # 每次爬取的最大链接数

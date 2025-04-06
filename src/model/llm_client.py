@@ -34,7 +34,6 @@ class LLMClient:
         model_limits = {
             "qwen2.5-72b-instruct": 128000,
             "qwen-turbo-latest": 1000000,
-            "tongyi-intent-detect-v3": 8000,
             "qwq-32b": 128000,
             "deepseek-r1": 64000
         }
@@ -48,14 +47,13 @@ class LLMClient:
             return len(self.tokenizer.encode(text))
         except Exception as e:
             logger.warning(f"计算token数量时出错: {e}，使用估算方法")
-            # 简单估算：中文字符算2个token，其他字符算1个
             chinese_count = sum(1 for char in text if '\u4e00' <= char <= '\u9fff')
             return chinese_count * 2 + (len(text) - chinese_count)
             
-    def truncate_prompt(self, prompt: str, system_message: str = None) -> str:
+    def _truncate_prompt(self, prompt: str, system_message: str = None, model: str = None) -> str:
         """截断prompt以确保不超过模型token限制"""
         system_tokens = self.count_tokens(system_message) if system_message else 0
-        available_tokens = self.token_limit - system_tokens
+        available_tokens = self._get_model_token_limit(model) - system_tokens
         prompt_tokens = self.count_tokens(prompt)
         if prompt_tokens > available_tokens:
             truncation_ratio = available_tokens / prompt_tokens
@@ -66,30 +64,17 @@ class LLMClient:
     
     def _init_client(self):
         """初始化API客户端"""
-        # 配置OpenAI
         try:
             openai.api_key = self.api_key
-            
-            # 如果是DashScope API，确保URL路径正确
             if "dashscope" in self.api_base:
-                # 确保API基础URL不包含chat/completions路径，这将在API调用时自动添加
                 if self.api_base.endswith('/'):
                     self.api_base = self.api_base[:-1]
-                    
-                # 从URL中移除可能的重复路径
                 if "/chat/completions" in self.api_base:
                     self.api_base = self.api_base.replace("/chat/completions", "")
-                
-                # 确保v1后面有斜杠，避免形成v1chat这样的错误路径
                 if self.api_base.endswith('v1'):
                     self.api_base = f"{self.api_base}/"
-                
                 logger.info(f"检测到DashScope API，使用基础URL: {self.api_base}")
-            
-            # 设置OpenAI基础URL
             openai.base_url = self.api_base
-            
-            # 测试连接
             logger.info(f"初始化LLM客户端，模型: {self.model}")
         except Exception as e:
             logger.error(f"初始化OpenAI客户端时出错: {e}", exc_info=True)
@@ -113,44 +98,35 @@ class LLMClient:
         Returns:
             str: 生成的文本
         """
-        prompt = self.truncate_prompt(prompt, system_message)
+        if not model:
+            model = self.model
+        prompt = self._truncate_prompt(prompt, system_message, model)
         messages = []
         if system_message:
             messages.append({"role": "system", "content": system_message})
         messages.append({"role": "user", "content": prompt})
         max_retries = 2
         retry_delay = 2
-        if not model:
-            model = self.model
         if not use_tool_model:
             use_tool_model = self.use_tool_model
         
         for attempt in range(max_retries):
             try:
-                # 参数设置
                 params = {
                     "model": model,
                     "messages": messages,
                     "temperature": temperature if temperature is not None else self.temperature,
                     "max_tokens": max_tokens if max_tokens is not None else self.max_tokens,
                 }
-                
-                # 如果有工具配置，添加到参数中，并且设置支持工具调用的模型
                 if tools:
                     params["model"] = use_tool_model
                     params["tools"] = tools
-                
-                # 检查是否是DashScope API，并添加流式参数
                 if "dashscope" in self.api_base:
                     logger.info(f"使用DashScope API，启用流式模式")
                     params["stream"] = True
-                    
-                    # 调用API并处理流式响应
                     full_response = ""
-                    logger.info(f"使用API基础URL: {openai.base_url}")
+                    logger.info(f"流式等待: {openai.base_url} {model}")
                     stream_resp = openai.chat.completions.create(**params)
-                    
-                    # 从流式响应中收集完整响应
                     for chunk in stream_resp:
                         if hasattr(chunk.choices[0].delta, 'content') and chunk.choices[0].delta.content is not None:
                             content = chunk.choices[0].delta.content
@@ -158,16 +134,12 @@ class LLMClient:
                     
                     return full_response
                 else:
-                    # 标准OpenAI调用
-                    logger.info(f"使用API基础URL: {openai.base_url}")
+                    logger.info(f"同步: {openai.base_url} {model}")
                     response = openai.chat.completions.create(**params)
                     return response.choices[0].message.content
-            
             except Exception as e:
                 logger.error(f"调用LLM API时出错 (尝试 {attempt+1}/{max_retries}): {e}", exc_info=True)
-                
                 if attempt < max_retries - 1:
-                    # 指数退避策略
                     sleep_time = retry_delay * (2 ** attempt)
                     logger.info(f"等待 {sleep_time} 秒后重试...")
                     time.sleep(sleep_time)
@@ -191,7 +163,7 @@ class LLMClient:
         Returns:
             AsyncGenerator[str, None]: 生成的文本流
         """
-        prompt = self.truncate_prompt(prompt, system_message)
+        prompt = self._truncate_prompt(prompt, system_message, self.model)
         messages = []
         if system_message:
             messages.append({"role": "system", "content": system_message})
@@ -203,6 +175,7 @@ class LLMClient:
             "max_tokens": max_tokens if max_tokens is not None else self.max_tokens,
             "stream": True
         }
+        logger.info(f"流式输出: {openai.base_url} {self.model}")
         try:
             stream_resp = openai.chat.completions.create(**params)
             for chunk in stream_resp:
