@@ -126,7 +126,9 @@ class WebCrawler:
             'calendar', '/tag/', '/tags/', '/category/', '/categories/',
             '/archive/', '/archives/', '/author/', '/date/',
             # 购物车、结账和交易页面
-            'cart', 'checkout', 'basket', 'payment', 'order', 'transaction'
+            'cart', 'checkout', 'basket', 'payment', 'order', 'transaction',
+            # 人工识别链接
+            'www.ggzy.gov.cn/information/serve/wechat.jsp'
         ]
         if any(pattern in url.lower() for pattern in low_value_patterns):
             return False

@@ -122,7 +122,6 @@ class LLMClient:
                     params["model"] = use_tool_model
                     params["tools"] = tools
                 if "dashscope" in self.api_base:
-                    logger.info(f"使用DashScope API，启用流式模式")
                     params["stream"] = True
                     full_response = ""
                     logger.info(f"流式等待: {openai.base_url} {model}")

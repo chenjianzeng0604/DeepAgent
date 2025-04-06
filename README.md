@@ -103,10 +103,10 @@ EVALUATE_INFORMATION_MODEL=deepseek-r1   # 信息量评估与规划模型
 COMPRESSION_MODEL=deepseek-r1            # 文章压缩模型
 
 # 爬虫配置
-CRAWLER_MAX_LINKS_RESULT=20                # 每次爬取的最大链接数
+CRAWLER_MAX_LINKS_RESULT=30                # 每次爬取的最大链接数
 CRAWLER_EXTRACT_PDF_TIMEOUT=10             # PDF提取超时时间（秒）
 CRAWLER_FETCH_URL_TIMEOUT=20               # URL获取超时时间（秒）
-CRAWLER_FETCH_ARTICLE_WITH_SEMAPHORE=10    # 最大并发任务数
+CRAWLER_FETCH_ARTICLE_WITH_SEMAPHORE=5     # 最大并发任务数
 CLOUDFLARE_BYPASS_WAIT_FOR_TIMEOUT=1000    # Cloudflare绕过等待超时（毫秒）
 
 # Milvus向量数据库配置
