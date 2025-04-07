@@ -42,7 +42,6 @@ class DeepresearchAgent:
         session_id = session_id or str(uuid.uuid4())
         self.crawler_config_manager = crawler_config_manager
         self.session_id = session_id
-        self.summary_limit = int(os.getenv("SUMMARY_LIMIT"))
         self.vectordb_limit = int(os.getenv("VECTORDB_LIMIT"))
         self.milvus_dao = milvus_dao
         self.llm_client = llm_client
@@ -127,13 +126,22 @@ class DeepresearchAgent:
             retry_count = 0
             while retry_count < max_retries:
                 try:
-                    buffer = ""  # 用于缓冲少量token，以获得更流畅的体验
-                    buffer_limit = 10  # 缓冲更多token后再发送，减少请求频率
+                    buffer = ""
+                    reasoning_buffer = ""
+                    buffer_limit = 10
                     async for chunk in self.llm_client.generate_with_streaming(deep_analysis_prompt):
-                        buffer += chunk
+                        if chunk.get("reasoning_content"):
+                            reasoning_buffer += chunk.get("reasoning_content")
+                        if len(reasoning_buffer) >= buffer_limit or '\n' in reasoning_buffer or '。' in reasoning_buffer:
+                            yield {"type": "content", "content": reasoning_buffer, "phase": "deep_think"}
+                            reasoning_buffer = ""
+                        if chunk.get("content"):
+                            buffer += chunk.get("content")
                         if len(buffer) >= buffer_limit or '\n' in buffer or '。' in buffer:
                             yield {"type": "content", "content": buffer, "phase": "deep_summary"}
                             buffer = ""
+                    if reasoning_buffer:
+                        yield {"type": "content", "content": reasoning_buffer, "phase": "deep_think"}
                     if buffer:
                         yield {"type": "content", "content": buffer, "phase": "deep_summary"}
                     break
@@ -298,15 +306,8 @@ class DeepresearchAgent:
                             except Exception as e:
                                 logger.error(f"处理网络搜索结果时出错: {str(e)}")
             except Exception as e:
-                logger.error(f"deepresearch迭代时出错: {str(e)}")
-            
-            if len(all_results) >= self.summary_limit:
-                break
+                logger.error(f"deepresearch迭代时出错: {str(e)}", exc_info=True)
             iteration_count += 1
-        
-        if len(all_results) > self.summary_limit:
-            all_results = all_results[:self.summary_limit]
-        
         yield {"type": "research_results", "result": all_results}
 
     async def is_add_result(self, origin_query, all_results, result, current_token_count, available_token_limit):

@@ -130,7 +130,6 @@ class LLMClient:
                         if hasattr(chunk.choices[0].delta, 'content') and chunk.choices[0].delta.content is not None:
                             content = chunk.choices[0].delta.content
                             full_response += content
-                    
                     return full_response
                 else:
                     logger.info(f"同步: {openai.base_url} {model}")
@@ -180,14 +179,20 @@ class LLMClient:
             for chunk in stream_resp:
                 if chunk.choices and len(chunk.choices) > 0:
                     delta = chunk.choices[0].delta
-                    if delta and delta.content:
-                        yield delta.content
+                    if delta:
+                        yield {
+                            "content": delta.content if hasattr(delta, 'content') else "",
+                            "reasoning_content": delta.reasoning_content if hasattr(delta, 'reasoning_content') else ""
+                        }
         except Exception as e:
             logger.error(f"流式生成文本时出错: {e}", exc_info=True)
             try:
                 logger.info("尝试使用非流式方式生成...")
                 non_streaming_response = await self.generate(prompt, max_tokens, temperature, None, system_message)
-                yield non_streaming_response
+                yield {
+                    "content": non_streaming_response,
+                    "reasoning_content": ""
+                }
             except Exception as e2:
                 logger.error(f"非流式生成文本时出错: {e2}", exc_info=True)
 

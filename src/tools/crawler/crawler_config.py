@@ -15,20 +15,8 @@ SCENARIO_COLLECTIONS = {
     "fin": "deepresearch_fin",
     # 教育类别
     "edu": "deepresearch_edu",
-    # 娱乐类别
-    "ent": "deepresearch_ent",
-    # 电商类别
-    "ecom": "deepresearch_ecom",
-    # 法律类别
-    "leg": "deepresearch_leg",
-    # 汽车科技类别
-    "auto": "deepresearch_auto",
-    # 旅游类别
-    "tour": "deepresearch_tour",
-    # 心理类别
-    "psych": "deepresearch_psych",
-    # 企业全生命周期服务类别
-    "biz_lifecycle": "deepresearch_biz_lifecycle"
+    # 招投标类别
+    "bid": "deepresearch_bid"
 }
 
 class CrawlerConfigManager:

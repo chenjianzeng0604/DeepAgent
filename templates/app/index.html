@@ -1706,20 +1706,26 @@
             
             // 监听消息事件
             let isFirstChunkStatus = true;
+            let isFirstChunkThink = true;
             let isFirstChunkContent = true;
             let statusContent = '';
+            let assistantThink = '';
             let assistantContent = '';
             
-            // 添加对不同类型事件的监听
-            eventSource.addEventListener('content', function(event) {
-                console.log('收到内容事件:', event.data);
-                assistantContent = handleSSEContent(event.data, assistantContent, isFirstChunkContent);
-                isFirstChunkContent = false;
-            });
             eventSource.addEventListener('status', function(event) {
                 console.log('收到状态事件:', event.data);
                 statusContent = handleSSEStatus(event.data, statusContent, isFirstChunkStatus);
                 isFirstChunkStatus = false;
+            });
+            eventSource.addEventListener('think', function(event) {
+                console.log('收到think事件:', event.data);
+                assistantThink = handleSSEThink(event.data, assistantThink, isFirstChunkThink);
+                isFirstChunkThink = false;
+            });
+            eventSource.addEventListener('content', function(event) {
+                console.log('收到内容事件:', event.data);
+                assistantContent = handleSSEContent(event.data, assistantContent, isFirstChunkContent);
+                isFirstChunkContent = false;
             });
             eventSource.addEventListener('error', function(event) {
                 console.log('收到错误事件:', event.data);
@@ -1799,6 +1805,57 @@
                         }
                     }
                 } 
+                return currentContent;
+            } catch (e) {
+                console.error('解析SSE消息失败:', e, data);
+                messagesContainer.scrollTop = messagesContainer.scrollHeight;
+                return currentContent;
+            }
+        }
+
+        // 处理SSE消息
+        function handleSSEThink(data, currentContent='', isFirstChunk=false) {
+            try {
+                const jsonData = JSON.parse(data);
+                if (currentAssistantMessage) {
+                    const contentDiv = currentAssistantMessage.querySelector('.message-content');
+                    if (contentDiv) {
+                        if (jsonData.content) {
+                            const type = jsonData.type || '';
+                            const contentText = jsonData.content || '';
+                            const currentPhase = jsonData.phase || '';
+                            console.log(jsonData);
+                            if (type === 'content') {
+                                let thinkContainer = contentDiv.querySelector('.think-container');
+                                if (!thinkContainer) {
+                                    thinkContainer = document.createElement('div');
+                                    thinkContainer.className = 'think-container';
+                                    contentDiv.appendChild(thinkContainer);
+                                }
+                                if (isFirstChunk) {
+                                    currentContent = contentText;
+                                } else {
+                                    currentContent += contentText;
+                                }
+                                thinkContainer.innerHTML = marked.parse(currentContent);
+                                thinkContainer.querySelectorAll('pre code').forEach((block) => {
+                                    if (!block.classList.contains('hljs')) {
+                                        hljs.highlightElement(block);
+                                    }
+                                });
+                                if (!currentAssistantMessage.classList.contains('collapsed')) {
+                                    messagesContainer.scrollTo({
+                                        top: messagesContainer.scrollHeight,
+                                        behavior: 'smooth'
+                                    });
+                                }
+                            } else {
+                                const currentDivContent = contentDiv.innerHTML || '';
+                                contentDiv.innerHTML = currentDivContent + marked.parse(contentText);
+                            }
+                        }
+                    }
+                }
                 return currentContent;
             } catch (e) {
                 console.error('解析SSE消息失败:', e, data);

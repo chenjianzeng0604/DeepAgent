@@ -326,7 +326,8 @@ async def process_chat_request(stream_id: str, user: Dict[str, Any], session_id:
         "message": message
     }
     agent = get_agent(session_id)
-    full_response = ""
+    full_think = ""
+    full_content = ""
     try:
         async for chunk in agent.process_stream(ChatMessage(message=message)):
             if not active_streams.get(stream_id, {}).get("active", False):
@@ -335,14 +336,19 @@ async def process_chat_request(stream_id: str, user: Dict[str, Any], session_id:
                 
             if chunk:
                 chunk_type = chunk.get("type", "")
+                chunk_phase = chunk.get("phase", "")
                 if chunk_type == "research_process":
                     yield f"event: status\ndata: {json.dumps(chunk)}\n\n"
                 if chunk_type == "content":
-                    full_response += chunk.get("content", "")
-                    yield f"event: content\ndata: {json.dumps(chunk)}\n\n"
+                    if chunk_phase == "deep_think":
+                        full_think += chunk.get("content", "")
+                        yield f"event: think\ndata: {json.dumps(chunk)}\n\n"
+                    else:
+                        full_content += chunk.get("content", "")
+                        yield f"event: content\ndata: {json.dumps(chunk)}\n\n"
         yield f"event: complete\ndata: {json.dumps({'type': 'complete', 'content': session_id})}\n\n"
         try:
-            await send_email_with_results(message, full_response, user.get("email"))
+            await send_email_with_results(message, full_think, full_content, user.get("email"))
         except Exception as e:
             logger.error(f"发送邮件失败: {str(e)}", exc_info=True)
     except Exception as e:
@@ -354,7 +360,7 @@ async def process_chat_request(stream_id: str, user: Dict[str, Any], session_id:
             active_streams[stream_id]["active"] = False
             logger.info(f"流处理完成 [stream_id={stream_id}]")
 
-async def send_email_with_results(query: str, response: str, email: str = None):
+async def send_email_with_results(query: str, think: str, content: str, email: str = None):
     """
     发送邮件给用户，包含研究结果
     
@@ -387,9 +393,13 @@ async def send_email_with_results(query: str, response: str, email: str = None):
             <div class="query">
                 <strong>您的查询:</strong> {query}
             </div>
+            <h2>思考过程:</h2>
+            <div class="think">
+                {markdown2.markdown(think)}
+            </div>
             <h2>研究结果:</h2>
-            <div class="response">
-                {markdown2.markdown(response)}
+            <div class="content">
+                {markdown2.markdown(content)}
             </div>
             <p>感谢您使用深度研究助手!</p>
         </body>

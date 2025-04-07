@@ -198,7 +198,7 @@ class WebCrawler:
                                 final_text = '\n\n'.join(text_content)
                                 is_filter = self._rule_based_filter(url, final_text)
                                 if (is_filter):
-                                    logger.info(f"命中低质量规则校验，过滤掉{url}的内容:{final_text}")
+                                    logger.info(f"命中低质量规则校验，过滤掉 {url} 的内容")
                                     return None
                                 return final_text
         except Exception as e:
@@ -624,7 +624,7 @@ class WebCrawler:
                         text = await page.inner_text("body")
                         is_filter = self._rule_based_filter(url, text)
                         if is_filter:
-                            logger.info(f"命中低质量规则校验，过滤掉{url}的内容:{text}")
+                            logger.info(f"命中低质量规则校验，过滤掉 {url} 的内容")
                             return None
                         else:
                             return html
@@ -737,22 +737,22 @@ class WebCrawler:
             return True
         # 文本过短
         if len(text) < 150:
-            logger.info(f"{url}文本过短，过滤")
+            logger.info(f"{url} 文本过短，过滤")
             return True
             
-        # 规则1: 检测乱码（非中文/英文/数字/常用标点符号占比过高）
+        # 检测乱码（非中文/英文/数字/常用标点符号占比过高）
         non_valid_chars = re.findall(r'[^\u4e00-\u9fa5a-zA-Z0-9，。！？、,\.!?]', text)
         if len(non_valid_chars) / max(len(text), 1) > 0.3:  # 非有效字符超过30%
-            logger.info(f"{url}检测到乱码，过滤")
+            logger.info(f"{url} 检测到乱码，过滤")
             return True
             
-        # 规则2: 重复内容检测
+        # 重复内容检测
         words = text.split()
         if len(words) > 20 and len(set(words)) / max(len(words), 1) < 0.1:  # 词汇多样性过低
-            logger.info(f"{url}检测到重复内容，过滤")
+            logger.info(f"{url} 检测到重复内容，过滤")
             return True
             
-        # 规则3: 检测垃圾内容标志
+        # 检测垃圾内容标志
         keywords = [
             'click here', 'buy now', 'limited offer', 'free download',
             'make money', 'earn cash', '点击这里', '立即购买', '限时优惠',
@@ -761,7 +761,7 @@ class WebCrawler:
         ]
         lower_text = text.lower()
         if any(keyword in lower_text for keyword in keywords):
-            logger.info(f"{url}检测到垃圾内容，过滤")
+            logger.info(f"{url} 检测到垃圾内容，过滤")
             return True
 
         # 检测反爬验证页面

@@ -98,16 +98,16 @@ LLM_MODEL=deepseek-r1                    # 深度总结模型
 LLM_TEMPERATURE=0.7                      # 模型温度参数
 LLM_MAX_TOKENS=4096                      # 最大生成token数
 LLM_USE_TOOL_MODEL=qwen2.5-72b-instruct  # 工具调用模型
-ARTICLE_QUALITY_MODEL=qwen-turbo-latest  # 文章质量评估模型
+ARTICLE_QUALITY_MODEL=deepseek-r1        # 文章质量评估模型
 EVALUATE_INFORMATION_MODEL=deepseek-r1   # 信息量评估与规划模型
 COMPRESSION_MODEL=deepseek-r1            # 文章压缩模型
 
 # 爬虫配置
-CRAWLER_MAX_LINKS_RESULT=30                # 每次爬取的最大链接数
-CRAWLER_EXTRACT_PDF_TIMEOUT=10             # PDF提取超时时间（秒）
-CRAWLER_FETCH_URL_TIMEOUT=20               # URL获取超时时间（秒）
-CRAWLER_FETCH_ARTICLE_WITH_SEMAPHORE=5     # 最大并发任务数
-CLOUDFLARE_BYPASS_WAIT_FOR_TIMEOUT=1000    # Cloudflare绕过等待超时（毫秒）
+CRAWLER_MAX_LINKS_RESULT=10                # 每次爬取的最大链接数
+CRAWLER_EXTRACT_PDF_TIMEOUT=8              # PDF提取超时时间（秒）
+CRAWLER_FETCH_URL_TIMEOUT=18               # URL获取超时时间（秒）
+CRAWLER_FETCH_ARTICLE_WITH_SEMAPHORE=3     # 最大并发任务数
+CLOUDFLARE_BYPASS_WAIT_FOR_TIMEOUT=600     # Cloudflare绕过等待超时（毫秒）
 
 # Milvus向量数据库配置
 MILVUS_URI=http://localhost:19530    # Milvus服务地址
@@ -116,7 +116,6 @@ MILVUS_PASSWORD=your_milvus_password # Milvus密码
 
 # 向量数据库检索配置
 VECTORDB_LIMIT=2                     # 向量数据库检索限制
-SUMMARY_LIMIT=50                     # 摘要限制
 
 # 邮件配置
 EMAIL_SMTP_SERVER=smtp.example.com   # SMTP服务器地址
@@ -128,7 +127,7 @@ EMAIL_RECIPIENT=user1_email@example.com,user2_email@example.com # 收件人
 EMAIL_USE_TLS=True                   # 是否使用TLS
 
 # 研究配置
-RESEARCH_MAX_ITERATIONS=10           # 最大研究迭代次数
+RESEARCH_MAX_ITERATIONS=6            # 最大研究迭代次数
 ```
 
 ### 4. 安装Milvus向量数据库
