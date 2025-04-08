@@ -118,69 +118,52 @@ class DeepresearchAgent:
             all_content.append(content)
         
         if all_content:
-            deep_analysis_prompt = PromptTemplates.format_deep_analysis_prompt(
+            prompt = PromptTemplates.format_deep_analysis_prompt(
                 query, 
                 '\n'.join(all_content)
             )
-            max_retries = 2
-            retry_count = 0
-            while retry_count < max_retries:
-                try:
-                    buffer = ""
-                    reasoning_buffer = ""
-                    buffer_limit = 10
-                    async for chunk in self.llm_client.generate_with_streaming(deep_analysis_prompt):
-                        if chunk.get("reasoning_content"):
-                            reasoning_buffer += chunk.get("reasoning_content")
-                        if len(reasoning_buffer) >= buffer_limit or '\n' in reasoning_buffer or '。' in reasoning_buffer:
-                            yield {"type": "content", "content": reasoning_buffer, "phase": "deep_think"}
-                            reasoning_buffer = ""
-                        if chunk.get("content"):
-                            buffer += chunk.get("content")
-                        if len(buffer) >= buffer_limit or '\n' in buffer or '。' in buffer:
-                            yield {"type": "content", "content": buffer, "phase": "deep_summary"}
-                            buffer = ""
-                    if reasoning_buffer:
-                        yield {"type": "content", "content": reasoning_buffer, "phase": "deep_think"}
-                    if buffer:
-                        yield {"type": "content", "content": buffer, "phase": "deep_summary"}
-                    break
-                except Exception as e:
-                    retry_count += 1
-                    if retry_count < max_retries:
-                        logger.warning(f"流式连接出错，正在进行第{retry_count}次重试: {str(e)}")
-                        yield {"type": "status", "content": f"连接出错，正在重试({retry_count}/{max_retries})...", "phase": "retry"}
-                        await asyncio.sleep(1)  # 等待1秒后重试
-                    else:
-                        logger.error(f"流式连接最终失败: {str(e)}")
-                        yield {"type": "error", "content": f"连接失败，请稍后重试: {str(e)}"}
-                        raise
         else:
-            yield {"type": "status", "content": "无法生成深度分析，未找到有效内容", "phase": "analysis_error"}
-            yield {"type": "content", "content": "抱歉，我发现了一些相关信息，但无法生成有效的深度分析。请尝试使用更具体的查询。"}
+            prompt = f"用户当前问题: {query}\n\n"
+            chat_history = self.memory_manager.get_chat_history(self.session_id)
+            if chat_history:
+                prompt += "请基于以下历史对话回答用户的问题:\n\n"
+                for msg in chat_history:
+                    role = "用户" if msg.get("role") == "user" else "助手"
+                    prompt += f"{role}: {msg.get('content', '')}\n\n"
         
-        # 如果没有找到研究结果，仅使用历史对话回复
-        yield {"type": "status", "content": "未找到相关信息，基于历史对话生成回复", "phase": "chat_response"}
-        prompt = f"用户当前问题: {query}\n\n"
-        chat_history = self.memory_manager.get_chat_history(self.session_id)
-        if chat_history:
-            prompt += "请基于以下历史对话回答用户的问题:\n\n"
-            for msg in chat_history:
-                role = "用户" if msg.get("role") == "user" else "助手"
-                prompt += f"{role}: {msg.get('content', '')}\n\n"
-        try:
-            buffer = ""
-            buffer_limit = 10
-            async for chunk in self.llm_client.generate_with_streaming(prompt):
-                buffer += chunk
-                if len(buffer) >= buffer_limit or '\n' in buffer or '。' in buffer:
-                    yield {"type": "content", "content": buffer}
-                    buffer = ""
-            if buffer:
-                yield {"type": "content", "content": buffer}
-        except Exception as e:
-            logger.error(f"流式连接最终失败: {str(e)}")
-            yield {"type": "error", "content": f"连接失败，请稍后重试: {str(e)}"}
+        max_retries = 2
+        retry_count = 0
+        while retry_count < max_retries:
+            try:
+                buffer = ""
+                reasoning_buffer = ""
+                buffer_limit = 10
+                async for chunk in self.llm_client.generate_with_streaming(prompt):
+                    if chunk.get("reasoning_content"):
+                        reasoning_buffer += chunk.get("reasoning_content")
+                    if len(reasoning_buffer) >= buffer_limit or '\n' in reasoning_buffer or '。' in reasoning_buffer:
+                        yield {"type": "content", "content": reasoning_buffer, "phase": "deep_think"}
+                        reasoning_buffer = ""
+                    if chunk.get("content"):
+                        buffer += chunk.get("content")
+                    if len(buffer) >= buffer_limit or '\n' in buffer or '。' in buffer:
+                        yield {"type": "content", "content": buffer, "phase": "deep_summary"}
+                        buffer = ""
+                if reasoning_buffer:
+                    yield {"type": "content", "content": reasoning_buffer, "phase": "deep_think"}
+                if buffer:
+                    yield {"type": "content", "content": buffer, "phase": "deep_summary"}
+                break
+            except Exception as e:
+                retry_count += 1
+                if retry_count < max_retries:
+                    logger.warning(f"流式连接出错，正在进行第{retry_count}次重试: {str(e)}")
+                    yield {"type": "status", "content": f"连接出错，正在重试({retry_count}/{max_retries})...", "phase": "retry"}
+                    await asyncio.sleep(1)
+                else:
+                    logger.error(f"流式连接最终失败: {str(e)}")
+                    yield {"type": "error", "content": f"连接失败，请稍后重试: {str(e)}"}
+                    raise
 
     async def _research(self, message):
         """
