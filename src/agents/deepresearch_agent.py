@@ -85,13 +85,9 @@ class DeepresearchAgent:
                     yield chunk
             response_content = ""
             async for chunk in self._deep_summary(message, research_results):
-                if isinstance(chunk, dict):
-                    yield chunk
-                else:
-                    response_content += chunk
-                    yield {"type": "content", "content": chunk, "phase": "deep_summary"}
+                response_content += chunk['content']
+                yield chunk
             self.memory_manager.save_chat_history(self.session_id, [{"role": "assistant", "content": response_content}])
-            yield {"type": "status", "content": "处理完成", "phase": "complete"}
         except Exception as e:
             logger.error(f"处理流时出错: {str(e)}", exc_info=True)
             yield {"type": "error", "content": f"处理您的查询时出错: {str(e)}"}
